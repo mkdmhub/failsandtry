@@ -41,6 +41,12 @@
 	var tmpPazienti;
 	var tmpEsercizi;
 	
+	function gotToPage(pageUrl) {
+		if (pageUrl) {
+			$(location).attr('href', pageUrl);
+		}
+	}
+	
 	function performActionsOnPageReady() {
 		// inizializzo/apro il Database e leggo i vari archivi, in cascata, iniziando dall'archivio Medici
 		// se il database ancora non esiste viene creato, altrimenti viene aperto
@@ -391,6 +397,12 @@
 				<div align="center" class="block" style="padding-top: 30px; display: table; width:100%; margin: 0 auto;">
 				
 					<div id="uiBody">
+						<div>
+							<button style="width:90%; margin-bottom:20px;" class="col button button-big button-fill button-raised button-outline color-green text-color-white"
+									onclick="gotToPage('page02.html');">PAGINA 02
+							</button>
+						</div>
+
 						<div align="center"
 							style="width:90%; vertical-align:middle; background-color: #2196f3; text-align: center; font-size: 120%;">
 							<span style="vertical-align:middle;" class="text-color-white">DATI PER NUOVA VISITA</span>
