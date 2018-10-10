@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate, max-age=0"/>
+	<meta http-equiv="expires" content="0"/>
+	<meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
+	<meta http-equiv="pragma" content="no-cache"/>
+	<meta name="viewport"
+		  content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+	<!-- App title -->
+	<title>LOGOPEDIA</title>
+
+	<!-- framework7 css -->
+	<link rel="stylesheet" type="text/css" href="dist/css/framework7.min.css">
+
+	<!-- Jquery -->
+	<script type="text/javascript" src="../jquery/jquery-3.2.1.min.js"></script>
+
+	<!-- Pouchdb -->
+	<script type="text/javascript" src="js/pouchdb.min-6.4.1.js"></script>
+	<script type="text/javascript" src="js/pouchdb.find.js"></script>
+	
+	<!-- App business logic -->
+	<script type="text/javascript" src="js/appLogopediaGlobalObjets.js"></script>
+	<script type="text/javascript" src="js/appLogopediaGlobalUtility.js"></script>
+	<script type="text/javascript" src="js/appLogopediaBusinesLogic.js"></script>
+</head>
+
+<body class="page color-theme-blue" bgcolor="white">
+<script type="text/javascript">
+	// oggetto di appoggio per la lettura delle visite giá presenti nel database
+	// e per la memorizzazione di nuove visite
+	var tmpVisite;
+	
+	// oggetto di appoggio per la lettura dell'archvio dei medici
+	var tmpMedici;
+	var tmpPazienti;
+	var tmpEsercizi;
+	
+	function performActionsOnPageReady() {
+		// inizializzo/apro il Database e leggo i vari archivi, in cascata, iniziando dall'archivio Medici
+		// se il database ancora non esiste viene creato, altrimenti viene aperto
+		AppBusinesLogic.initDatabase(false, loadMedici);
+	}
+	
+	function storeNewVisita() {
+		if (!appPouchDB) {
+			appLog('NO PouchDB');
+			app.dialog.open($("#dialog_null_archive"), true);
+			return;
+		}
+
+		// array di nuove visite da memorizzare (attualmente l'array conterrá un solo elemento)
+		var storingVisite = new Array();
+		
+		var objJsonStrVisita = JSON.stringify(dbPrototypeVisita);
+		var objJsonStrEsercizioSvolto = JSON.stringify(dbPrototypeEsercizioSvolto);
+		var tmpVisita = null;
+		var tmpEsercizioSvolto = null;
+		var d = Date.now();
+		var d2 = new Date();
+		
+		try {
+			// creo un nuovo oggetto "tmpVisita" utilizzando l'oggetto prototipo "dbPrototypeVisita"
+			tmpVisita = JSON.parse(objJsonStrVisita);
+		} catch(e) {
+			appLog('JSON.parse Error');
+			appLog(e);
+		}
+		if (!tmpVisita) {
+			app.dialog.open($("#dialog_error_instancing"), true);
+			return;
+		}
+		
+		// valorizzo le proprietá della nuova tmpVisita da memorizzare
+		tmpVisita._id = d.toString();
+		tmpVisita.codice = tmpVisita._id;
+		tmpVisita.cod_medico = "MEDICO001";
+		tmpVisita.cod_paziente = "PAZIENTE001";
+		tmpVisita.data_visita = jsDateToItalian(d2, true, false);
+		// array che conterrá i dati degli esercizi svolti (attualmente l'array conterrá un solo elemento)
+		tmpVisita.esercizi_svolti = new Array();
+		
+		try {
+			// creo un nuovo oggetto "tmpEsercizioSvolto" utilizzando l'oggetto prototipo "dbPrototypeEsercizioSvolto"
+			tmpEsercizioSvolto = JSON.parse(objJsonStrEsercizioSvolto);
+		} catch(e) {
+			appLog('JSON.parse Error');
+			appLog(e);
+		}
+		if (!tmpEsercizioSvolto) {
+			app.dialog.open($("#dialog_error_instancing"), true);
+			return;
+		}
+		
+		// valorizzo le proprietá del nuovo esercizio svolto da memorizzare
+		tmpEsercizioSvolto.cod_esercizio = "ESERCIZIO001";
+		tmpEsercizioSvolto.punteggio = 5;
+		tmpEsercizioSvolto.annotazioni = "Annotazioni varie";
+		tmpEsercizioSvolto.completato = true;
+		
+		// aggiungo l'esercizio svolto appena creato, all'array degli esercizi svolti della tmpVisita da memorizzare
+		tmpVisita.esercizi_svolti.push(tmpEsercizioSvolto);
+		
+		// aggiungo la tmpVisita appena creata, all'array delle tmpVisita da memorizzare
+		storingVisite.push(tmpVisita);
+		
+		// memorizzo le nuove visite nel database
+		AppBusinesLogic.storeNewVisite(storingVisite, callBackStoreNewVisite);
+	}
+	
+	function loadMedici() {
+		if (!appPouchDB) {
+			appLog('NO PouchDB');
+			app.dialog.open($("#dialog_null_archive"), true);
+			return;
+		}
+		
+		AppBusinesLogic.loadAllMedici(callBackLoadAllMedici);
+	}
+	
+	function loadVisite() {
+		if (!appPouchDB) {
+			appLog('NO PouchDB');
+			app.dialog.open($("#dialog_null_archive"), true);
+			return;
+		}
+
+		AppBusinesLogic.loadAllVisite(callBackLoadAllVisite);
+	}
+	
+	function renderArchivoVisite() {
+		let objJsonStr = JSON.stringify(tmpVisite);
+		$('#totVisite').text(' (Tot: ' + (tmpVisite.length).toString() + ')')
+		$('#archiveDataView').val(objJsonStr);
+	}
+	
+	function resetDatabaseVisite() {
+		app.dialog.open($("#dialog_reset_database"), true);
+	}
+	
+	function callBackResetDatabase() {
+		app.dialog.open($("#dialog_archive_reverted"), true);
+		loadVisite();
+	}
+	
+	function callBackStoreNewVisite(result) {
+		appLog('storeNewVisite result: ' + result);
+		if (result) {
+			app.dialog.open($("#dialog_store_visite_done"), true);
+			loadVisite();
+		} else {
+			app.dialog.open($("#dialog_store_visite_error"), true);
+		}
+	}
+	
+	function callBackLoadAllVisite(result) {
+		appLog('load Visite Done');
+		if (!result) {
+			app.dialog.open($("#dialog_load_visite_error"), true);
+			return;
+		}
+		
+		// popolo l'oggetto di appoggio per le visite, con i dati ricevuti dal database
+		tmpVisite = new Array();
+		
+		var visita;
+		var esercizioSvolto;
+		var tmpVisita;
+		var tmpEsercizioSvolto;
+		
+		var objJsonStrVisita = JSON.stringify(dbPrototypeVisita);
+		var objJsonStrEsercizioSvolto = JSON.stringify(dbPrototypeEsercizioSvolto);
+		
+		if (result.docs.length > 0) {
+			for (var i = 0; i < result.docs.length; i++) {
+				tmpVisita = result.docs[i];
+				try {
+					// creo un nuovo oggetto "visita" utilizzando l'oggetto prototipo "dbPrototypeVisita"
+					visita = JSON.parse(objJsonStrVisita);
+				} catch(e) {
+					appLog(e);
+				}
+				if (visita) {
+					visita._id = tmpVisita._id;
+					if (tmpVisita._rev) {
+						visita._rev = tmpVisita._rev;
+					}
+					visita.codice = tmpVisita.codice;
+					visita.cod_medico = tmpVisita.cod_medico;
+					visita.cod_paziente = tmpVisita.cod_paziente;
+					visita.data_visita = tmpVisita.data_visita;
+					visita.esercizi_svolti = new Array();
+					
+					for (var i2 = 0; i2 < tmpVisita.esercizi_svolti.length; i2++) {
+						tmpEsercizioSvolto = tmpVisita.esercizi_svolti[i2];
+						try {
+							// creo un nuovo oggetto "esercizioSvolto" utilizzando l'oggetto prototipo "dbPrototypeEsercizioSvolto"
+							esercizioSvolto = JSON.parse(objJsonStrEsercizioSvolto);
+						} catch(e) {
+							appLog(e);
+						}
+						if (esercizioSvolto) {
+							esercizioSvolto.cod_esercizio = tmpEsercizioSvolto.cod_esercizio;
+							esercizioSvolto.annotazioni = tmpEsercizioSvolto.annotazioni;
+							esercizioSvolto.punteggio = tmpEsercizioSvolto.punteggio;
+							esercizioSvolto.completato = tmpEsercizioSvolto.completato;
+							
+							visita.esercizi_svolti.push(esercizioSvolto);
+						}
+					}
+					
+					tmpVisite.push(visita);
+					appLog(visita);
+				}
+			}
+		}
+
+		renderArchivoVisite();
+	}
+	
+	function callBackLoadAllMedici(result) {
+		if (!result) {
+			app.dialog.open($("#dialog_load_medici_error"), true);
+			return;
+		}
+		
+		// popolo l'oggetto di appoggio per i medici, con i dati ricevuti dal database
+		tmpMedici = new Array();
+		
+		var medico;
+		var tmpMedico;
+		var tmpHtml;
+		
+		var objJsonStrMedico = JSON.stringify(dbPrototypeMedico);
+		
+		if (result.docs.length > 0) {
+			for (var i = 0; i < result.docs.length; i++) {
+				tmpMedico = result.docs[i];
+				try {
+					// creo un nuovo oggetto "medico" utilizzando l'oggetto prototipo "dbPrototypeMedico"
+					medico = JSON.parse(objJsonStrMedico);
+				} catch(e) {
+					appLog(e);
+				}
+				if (medico) {
+					medico._id = tmpMedico._id;
+					if (tmpMedico._rev) {
+						medico._rev = tmpMedico._rev;
+					}
+					medico.codice = tmpMedico.codice;
+					medico.nome = tmpMedico.nome;
+					
+					tmpMedici.push(medico);
+					appLog(medico);
+					
+					tmpHtml = '<div>';
+					tmpHtml += '<span style="font-weight:bold;">' + escapeHtml(medico.codice) + '</span> - ' +  escapeHtml(medico.nome);
+					tmpHtml += '</div>'
+					
+					$(tmpHtml).appendTo('#listaMedici');
+				}
+			}
+
+		}
+		
+		// carico l'archvio Pazienti
+		AppBusinesLogic.loadAllPazienti(callBackLoadAllPazienti);
+	}
+	
+	function callBackLoadAllPazienti(result) {
+		if (!result) {
+			app.dialog.open($("#dialog_load_pazienti_error"), true);
+			return;
+		}
+		
+		// popolo l'oggetto di appoggio per i pazienti, con i dati ricevuti dal database
+		tmpPazienti = new Array();
+		
+		var paziente;
+		var tmpPaziente;
+		var tmpHtml;
+		
+		var objJsonStrPaziente = JSON.stringify(dbPrototypePaziente);
+		
+		if (result.docs.length > 0) {
+			for (var i = 0; i < result.docs.length; i++) {
+				tmpPaziente = result.docs[i];
+				try {
+					// creo un nuovo oggetto "paziente" utilizzando l'oggetto prototipo "dbPrototypePaziente"
+					paziente = JSON.parse(objJsonStrPaziente);
+				} catch(e) {
+					appLog(e);
+				}
+				if (paziente) {
+					paziente._id = tmpPaziente._id;
+					if (tmpPaziente._rev) {
+						paziente._rev = tmpPaziente._rev;
+					}
+					paziente.codice = tmpPaziente.codice;
+					paziente.nome = tmpPaziente.nome;
+					
+					tmpPazienti.push(paziente);
+					appLog(paziente);
+					
+					tmpHtml = '<div>';
+					tmpHtml += '<span style="font-weight:bold;">' + escapeHtml(paziente.codice) + '</span> - ' +  escapeHtml(paziente.nome);
+					tmpHtml += '</div>'
+					
+					$(tmpHtml).appendTo('#listaPazienti');
+				}
+			}
+		}
+		
+		// carico l'archvio Esercizi
+		AppBusinesLogic.loadAllEsercizi(callBackLoadAllEsercizi);
+	}
+	
+	function callBackLoadAllEsercizi(result) {
+		if (!result) {
+			app.dialog.open($("#dialog_load_esercizi_error"), true);
+			return;
+		}
+		
+		// popolo l'oggetto di appoggio per gli esercizi, con i dati ricevuti dal database
+		tmpEsercizi = new Array();
+		
+		var esercizio;
+		var tmpEsercizio;
+		var tmpHtml;
+		
+		var objJsonStrEsercizio = JSON.stringify(dbPrototypeEsercizio);
+		
+		if (result.docs.length > 0) {
+			for (var i = 0; i < result.docs.length; i++) {
+				tmpEsercizio = result.docs[i];
+				try {
+					// creo un nuovo oggetto "esercizio" utilizzando l'oggetto prototipo "dbPrototypeEsercizio"
+					esercizio = JSON.parse(objJsonStrEsercizio);
+				} catch(e) {
+					appLog(e);
+				}
+				if (esercizio) {
+					esercizio._id = tmpEsercizio._id;
+					if (tmpEsercizio._rev) {
+						esercizio._rev = tmpEsercizio._rev;
+					}
+					esercizio.codice = tmpEsercizio.codice;
+					esercizio.nome = tmpEsercizio.nome;
+					esercizio.descrizione = tmpEsercizio.descrizione;
+					esercizio.punteggio_min = tmpEsercizio.punteggio_min;
+					esercizio.punteggio_max = tmpEsercizio.punteggio_max;
+					
+					tmpEsercizi.push(esercizio);
+					appLog(esercizio);
+					
+					tmpHtml = '<div>';
+					tmpHtml += '<span style="font-weight:bold;">' + escapeHtml(esercizio.codice) + '</span> - ' +  escapeHtml(esercizio.nome);
+					tmpHtml += '</div>'
+					
+					$(tmpHtml).appendTo('#listaEsercizi');
+				}
+			}
+		}
+	}
+
+</script>
+
+<!-- App root element -->
+<div id="app">
+    <div class="statusbar"></div>
+
+    <div class="view view-main">
+
+        <!-- <div data-name="home" class="page"> -->
+        <div class="page">
+
+            <div class="navbar">
+                <div class="navbar-inner">
+                    <div class="title"><a href="#" onclick="$(location).attr('href', 'index.html')">Home - App LOGOPEDIA</a></div>
+                </div>
+            </div>
+			
+            <!-- Scrollable page content -->
+            <div id="page-content" class="page-content" style="background-color: white;">
+				
+				<div align="center" class="block" style="padding-top: 30px; display: table; width:100%; margin: 0 auto;">
+				
+					<div id="uiBody">
+						<div align="center"
+							style="width:90%; vertical-align:middle; background-color: #2196f3; text-align: center; font-size: 120%;">
+							<span style="vertical-align:middle;" class="text-color-white">DATI PER NUOVA VISITA</span>
+						</div>
+						
+						<div id="listaMedici" style="width:90%;" class="list inline-labels no-hairlines" align="left">
+							<div align="center" style="color:red; font-weight:bold;">LISTA MEDICI</div>
+						</div>
+						
+						<div id="listaPazienti" style="width:90%;" class="list inline-labels no-hairlines" align="left">
+							<div align="center" style="color:red; font-weight:bold;">LISTA PAZIENTI</div>
+						</div>
+						
+						<div id="listaEsercizi" style="width:90%;" class="list inline-labels no-hairlines" align="left">
+							<div align="center" style="color:red; font-weight:bold;">LISTA ESERCIZI</div>
+						</div>
+						
+						<div>
+							<button style="width:90%; margin-bottom:20px;" class="col button button-big button-fill button-raised button-outline color-green text-color-white"
+									onclick="storeNewVisita();">AGGIUNGI NUOVA VISITA
+							</button>
+						</div>
+						
+						<div>
+							<button style="width:90%; margin-top:60px; margin-bottom:20px;" class="col button button-big button-fill button-raised button-outline color-blue text-color-white"
+									onclick="loadVisite();">CARICA VISITE
+							</button>
+						</div>
+						
+						<div>
+							<button style="width:90%; margin-top:20px; margin-bottom:20px;" class="col button button-big button-fill button-raised button-outline color-red text-color-white"
+									onclick="resetDatabaseVisite();">RESETTA DATABASE
+							</button>
+						</div>
+						
+						<div class="item-input-wrap" style="display:none;">
+							<textarea readonly style="width:90%;" rows="20" id="jsonDataExport"></textarea>
+						</div>
+						
+						<div class="item-input-wrap" style="width:90%; margin-top:20px; margin-bottom:20px;">
+							<p style="font-weight:bold; font-size:120%;">
+								Archivio Visite<span id="totVisite"></span>
+							</P>
+							<textarea id="archiveDataView" readonly
+								style="font-size:120%; width:100%; border:1px solid black;" rows="20"></textarea>
+						</div>
+
+					</div>
+					
+				</div>
+				
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+	codeWriteErrorInstancingDialogUI();
+
+	codeWriteNullArchiveDialogUI();
+	
+	codeWriteArchiveLoadedDialogUI();
+	
+	codeWriteResetDatabaseDialogUI();
+	
+	codeWriteArchiveRevertedDialogUI();
+	
+	codeWriteStoreVisiteDoneDialogUI();
+
+	codeWriteStoreVisiteErrorDialogUI();
+
+	codeWriteLoadVisiteErrorDialogUI();
+	
+	codeWriteLoadMediciErrorDialogUI();
+	
+	codeWriteLoadPazientiErrorDialogUI();
+	
+	codeWriteLoadEserciziErrorDialogUI();
+</script>
+
+<!-- Path to Framework7 Library JS-->
+<script type="text/javascript" src="dist/js/framework7.min.js"></script>
+<!-- Path to your app js-->
+<script type="text/javascript" src="dist/js/myapp.js"></script>
+
+<script type="text/javascript">
+    $(document).ready(function(){
+        $(window).bind("pageshow", function(event) {
+			// disabilita il riinvio dgli eventuali dati in post se si ricarica la pagina
+            if (event.originalEvent.persisted) {
+                window.location.reload()
+            }
+        });
+		
+		// INIZIO DELLA BUSINESS LOGIC - ENTRY POINT DALL'APP
+		performActionsOnPageReady();
+    });
+</script>
+</body>
+</html>
